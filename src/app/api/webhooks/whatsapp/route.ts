@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { passService } from "@/lib/pass-service";
+import { verifyConsentHmac } from "@/lib/security";
 
 /**
  * Meta WhatsApp Business Webhook Endpoint
  * 
- * GET: Webhook verification challenge from Meta developers portal.
+ * GET: Webhook verification challenge from Meta developers portal OR signed 1-tap parent approval link.
  * POST: Inbound webhook events (parent taps "Approve" / "Decline" interactive button or replies).
  */
 
@@ -22,11 +23,20 @@ export async function GET(request: NextRequest) {
     return new NextResponse(challenge, { status: 200 });
   }
 
-  // 2. Direct 1-Tap Browser Consent URL Support (e.g. from parent email/link)
+  // 2. Direct Signed 1-Tap Browser Consent URL Support (e.g. from parent email/link)
   const passId = searchParams.get("passId");
   const action = searchParams.get("action"); // "approve" | "reject"
+  const signatureToken = searchParams.get("token");
 
   if (passId && action) {
+    // Cryptographic signature check prevents URL enumeration and unauthorized approvals
+    if (!signatureToken || !verifyConsentHmac(passId, action, signatureToken)) {
+      return NextResponse.json(
+        { error: "Forbidden: Invalid, tampered, or missing cryptographic consent signature token" },
+        { status: 403 }
+      );
+    }
+
     const pass = await passService.getPassById(passId);
     if (!pass) {
       return NextResponse.json({ error: "Pass not found" }, { status: 404 });

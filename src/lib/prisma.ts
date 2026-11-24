@@ -16,11 +16,12 @@ export function getPrismaClient(): PrismaClient {
     );
   }
 
-  // Attempt driver adapter if available, otherwise direct connection
+  // Resilient instantiation: use datasourceUrl or adapter without crashing webpack
   let client: PrismaClient;
   try {
-    // Dynamic require so missing adapter does not crash build
-    const { PrismaPg } = require("@prisma/adapter-pg");
+    const adapterPkg = "@prisma/adapter-pg";
+    // eval-require avoids static bundling resolution failure during next build
+    const { PrismaPg } = eval("require")(adapterPkg);
     const adapter = new PrismaPg({ connectionString: url });
     client = new PrismaClient({ adapter });
   } catch {

@@ -1,4 +1,5 @@
 import { GatePass } from "@/types";
+import { generateConsentHmac } from "@/lib/security";
 
 export interface ParentNotificationResult {
   success: boolean;
@@ -15,14 +16,19 @@ export interface ParentNotificationResult {
  */
 export async function sendParentConsentRequest(pass: GatePass): Promise<ParentNotificationResult> {
   const recipientPhone = "+91 98765 11111"; // In real usage: pass.parentPhone or user.studentProfile.fatherPhone
-  const approveUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/webhooks/whatsapp?passId=${pass.id}&action=approve`;
-  const rejectUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/webhooks/whatsapp?passId=${pass.id}&action=reject`;
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
+  // Generate cryptographic HMAC signatures for tamper-proof 1-tap approvals
+  const approveToken = generateConsentHmac(pass.id, "approve");
+  const rejectToken = generateConsentHmac(pass.id, "reject");
+  const approveUrl = `${baseUrl}/api/webhooks/whatsapp?passId=${pass.id}&action=approve&token=${approveToken}`;
+  const rejectUrl = `${baseUrl}/api/webhooks/whatsapp?passId=${pass.id}&action=reject&token=${rejectToken}`;
 
   const messageText = 
     `PassGuard Campus Alert: Your ward ${pass.studentName} (Roll: ${pass.rollNumber}, Room: ${pass.roomNumber}) ` +
     `has applied for an ${pass.passType} Gate Pass to "${pass.destination}". ` +
     `Expected return: ${new Date(pass.expectedReturnTime).toLocaleString()}. ` +
-    `Reply YES ${pass.id} to approve or NO ${pass.id} to decline.`;
+    `Tap to Approve: ${approveUrl} or Decline: ${rejectUrl} | Or reply YES ${pass.id} / NO ${pass.id}.`;
 
   // 1. Meta WhatsApp Business API integration
   if (process.env.WHATSAPP_API_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID) {

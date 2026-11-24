@@ -1,5 +1,6 @@
 import { User, UserRole, HostelName } from "@/types";
 import { dbService, isCloudDbConfigured } from "@/lib/db-service";
+import { hashPassword, verifyPassword, generateSecureSessionToken } from "@/lib/security";
 
 interface UserRecord extends User {
   passwordHash: string; // Plain/hashed for mock store
@@ -96,6 +97,7 @@ export const authService = {
 
     const newUser: UserRecord = {
       ...userData,
+      passwordHash: hashPassword(userData.passwordHash),
       id: `usr_${userData.role}_${Date.now()}`,
       createdAt: new Date().toISOString(),
     };
@@ -108,16 +110,28 @@ export const authService = {
     const user = await this.findUserByEmail(email);
     if (!user) return null;
     if (user.role !== role) return null;
-    if (user.passwordHash !== password) return null;
+    if (!verifyPassword(password, user.passwordHash)) return null;
 
     return user;
   },
 
   createSession(userId: string): string {
-    const sessionToken = `sess_${userId}_${Math.random().toString(36).substring(2)}${Date.now()}`;
+    // Cryptographically secure 256-bit session token
+    const sessionToken = generateSecureSessionToken(`sess_${userId}`);
     // 7 days expiration
     const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
     globalForAuth.sessionsStore[sessionToken] = { userId, expiresAt };
+
+    // Active prune of expired sessions to prevent memory leaks
+    if (Object.keys(globalForAuth.sessionsStore).length > 200) {
+      const now = Date.now();
+      for (const [token, sess] of Object.entries(globalForAuth.sessionsStore)) {
+        if (now > sess.expiresAt) {
+          delete globalForAuth.sessionsStore[token];
+        }
+      }
+    }
+
     return sessionToken;
   },
 

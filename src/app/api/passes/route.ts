@@ -53,6 +53,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "All pass fields are required" }, { status: 400 });
     }
 
+    // Chronological date validation
+    const depTime = new Date(departureTime).getTime();
+    const retTime = new Date(expectedReturnTime).getTime();
+
+    if (isNaN(depTime) || isNaN(retTime)) {
+      return NextResponse.json(
+        { error: "Departure and expected return times must be valid ISO date strings" },
+        { status: 400 }
+      );
+    }
+
+    if (retTime <= depTime) {
+      return NextResponse.json(
+        { error: "Expected return time must be strictly after scheduled departure time" },
+        { status: 400 }
+      );
+    }
+
+    if (retTime - depTime > 30 * 24 * 60 * 60 * 1000) {
+      return NextResponse.json(
+        { error: "A single gate pass cannot exceed 30 consecutive days in duration" },
+        { status: 400 }
+      );
+    }
+
     const newPass = await passService.createPass({
       studentId: user.id,
       studentName: user.name,

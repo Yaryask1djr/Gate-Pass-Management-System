@@ -1,11 +1,18 @@
 /**
  * PassGuard 2.0 Comprehensive Test Suite
- * Validates State Machine Transitions, RBAC Auth, Rotating QR Tokens,
- * Checkpoint Entry/Exit Logging, and WhatsApp/SMS Webhook Logic.
+ * Validates State Machine Transitions, RBAC Auth, Scrypt Password Hashing,
+ * Rate Limiting, Rotating QR Tokens, Checkpoint Transit Logging, and HMAC Webhooks.
  */
 
 import { authService } from "../src/lib/auth-service";
 import { passService } from "../src/lib/pass-service";
+import {
+  hashPassword,
+  verifyPassword,
+  checkRateLimit,
+  generateConsentHmac,
+  verifyConsentHmac,
+} from "../src/lib/security";
 
 let totalTests = 0;
 let passedTests = 0;
@@ -26,47 +33,87 @@ async function runTestSuite() {
   console.log("=======================================================\n");
 
   // ==========================================================
-  // SUITE 1: RBAC Authentication & Session Engine
+  // SUITE 1: Cryptographic Security & Password Hashing
   // ==========================================================
-  console.log("📂 [Suite 1: Role-Based Access Control & Sessions]");
+  console.log("📂 [Suite 1: Cryptographic Security & Passwords]");
+
+  const rawPass = "SecretStudent#2026";
+  const hashed = hashPassword(rawPass);
+  assert(hashed.startsWith("scrypt$"), "Password hashed using salted scrypt");
+  assert(verifyPassword(rawPass, hashed), "Scrypt hash verifies correct plaintext password");
+  assert(!verifyPassword("WrongPassword#999", hashed), "Scrypt hash strictly rejects incorrect password");
+  assert(verifyPassword("pass123", "pass123"), "Backward-compatible verification for legacy seed accounts");
+
+  // ==========================================================
+  // SUITE 2: Rate Limiting & Denial-of-Service Defense
+  // ==========================================================
+  console.log("\n📂 [Suite 2: Rate Limiting & Throttling]");
+
+  const testIp = "192.168.1.99";
+  // Allow 3 requests per 2000ms
+  const r1 = checkRateLimit(testIp, 3, 2000);
+  const r2 = checkRateLimit(testIp, 3, 2000);
+  const r3 = checkRateLimit(testIp, 3, 2000);
+  const r4 = checkRateLimit(testIp, 3, 2000);
+
+  assert(r1.allowed && r2.allowed && r3.allowed, "Permits requests within configured rate threshold");
+  assert(!r4.allowed && r4.remaining === 0, "Enforces rate limit cutoff when threshold is exceeded");
+
+  // ==========================================================
+  // SUITE 3: HMAC-SHA256 Webhook Signatures
+  // ==========================================================
+  console.log("\n📂 [Suite 3: Webhook Cryptographic Signatures]");
+
+  const samplePassId = "GP-8842";
+  const validToken = generateConsentHmac(samplePassId, "approve");
+  assert(verifyConsentHmac(samplePassId, "approve", validToken), "HMAC signature verified for authentic webhook action");
+  assert(!verifyConsentHmac(samplePassId, "reject", validToken), "Rejects signature when action parameter is tampered with");
+  assert(!verifyConsentHmac("GP-9999", "approve", validToken), "Rejects signature when Pass ID is manipulated");
+  assert(!verifyConsentHmac(samplePassId, "approve", "tampered_fake_signature"), "Rejects invalid/arbitrary signatures");
+
+  // ==========================================================
+  // SUITE 4: RBAC Authentication & Session Engine
+  // ==========================================================
+  console.log("\n📂 [Suite 4: Role-Based Access Control & Sessions]");
   
-  // 1.1 Valid Student Auth
+  // 4.1 Valid Student Auth
   const student = await authService.verifyCredentials("student@campus.edu", "pass123", "student");
   assert(student !== null && student.name === "Aryan Sharma", "Student login with valid credentials");
 
-  // 1.2 Wrong Password
+  // 4.2 Wrong Password
   const badPass = await authService.verifyCredentials("student@campus.edu", "wrongpass", "student");
   assert(badPass === null, "Rejects login with invalid password");
 
-  // 1.3 Role Mismatch
+  // 4.3 Role Mismatch
   const roleMismatch = await authService.verifyCredentials("student@campus.edu", "pass123", "guard");
   assert(roleMismatch === null, "Rejects authentication when role does not match assigned user role");
 
-  // 1.4 Warden / Admin Auth
+  // 4.4 Warden / Admin Auth
   const warden = await authService.verifyCredentials("admin@campus.edu", "pass123", "admin");
   assert(warden !== null && warden.role === "admin", "Warden/Admin authentication succeeds");
 
-  // 1.5 Guard Auth
+  // 4.5 Guard Auth
   const guard = await authService.verifyCredentials("guard@campus.edu", "pass123", "guard");
   assert(guard !== null && guard.guardProfile?.assignedGate !== undefined, "Guard authentication succeeds with gate profile");
 
-  // 1.6 Session Creation & Retrieval
+  // 4.6 Session Creation & Retrieval
   if (student) {
     const sessionToken = authService.createSession(student.id);
     const sessionUser = await authService.getUserFromSession(sessionToken);
     assert(sessionUser?.id === student.id, "Session token correctly resolves user without exposing passwordHash");
+    assert(sessionToken.startsWith("sess_") && sessionToken.length > 30, "Session token generated with 256-bit entropy");
   }
 
   // ==========================================================
-  // SUITE 2: Gate Pass State Machine & Workflows
+  // SUITE 5: Gate Pass State Machine & Workflows
   // ==========================================================
-  console.log("\n📂 [Suite 2: Gate Pass State Machine]");
+  console.log("\n📂 [Suite 5: Gate Pass State Machine]");
 
   const now = new Date();
   const depart = new Date(now.getTime() + 30 * 60 * 1000).toISOString();
   const ret = new Date(now.getTime() + 4 * 60 * 60 * 1000).toISOString();
 
-  // 2.1 Day Pass Creation (Auto-approved parent consent)
+  // 5.1 Day Pass Creation (Auto-approved parent consent)
   const dayPass = await passService.createPass({
     studentId: "usr_student_01",
     studentName: "Aryan Sharma",
@@ -81,7 +128,7 @@ async function runTestSuite() {
   });
   assert(dayPass.status === "Pending" && dayPass.parentConsent.status === "Approved", "Day pass created with auto parent consent");
 
-  // 2.2 Overnight Pass Creation (Requires parent consent)
+  // 5.2 Overnight Pass Creation (Requires parent consent)
   const overnightPass = await passService.createPass({
     studentId: "usr_student_01",
     studentName: "Aryan Sharma",
@@ -96,7 +143,7 @@ async function runTestSuite() {
   });
   assert(overnightPass.status === "Pending" && overnightPass.parentConsent.status === "Pending", "Overnight pass requires pending parent consent");
 
-  // 2.3 Emergency Pass (Instant approval bypass)
+  // 5.3 Emergency Pass (Instant approval bypass)
   const emergencyPass = await passService.createPass({
     studentId: "usr_student_01",
     studentName: "Aryan Sharma",
@@ -111,7 +158,7 @@ async function runTestSuite() {
   });
   assert(emergencyPass.status === "Approved", "Emergency pass auto-approves immediately");
 
-  // 2.4 Warden Approval State Transition
+  // 5.4 Warden Approval State Transition
   const approvedOvernight = await passService.updatePassStatus(
     overnightPass.id,
     "Approved",
@@ -121,11 +168,11 @@ async function runTestSuite() {
   assert(approvedOvernight.status === "Approved" && approvedOvernight.approvedBy === "Dr. Vikram Sethi", "Warden pass approval updates status and logs signatory");
 
   // ==========================================================
-  // SUITE 3: Checkpoint Exit & Entry Transitions
+  // SUITE 6: Checkpoint Exit & Entry Transitions
   // ==========================================================
-  console.log("\n📂 [Suite 3: Checkpoint Scanner & Transit Logs]");
+  console.log("\n📂 [Suite 6: Checkpoint Scanner & Transit Logs]");
 
-  // 3.1 Exit Scan (action: OUT)
+  // 6.1 Exit Scan (action: OUT)
   const exitResult = await passService.recordCheckpointScan(
     approvedOvernight.id,
     "usr_guard_01",
@@ -136,7 +183,7 @@ async function runTestSuite() {
   assert(exitResult.pass.status === "CheckedOut" && exitResult.pass.actualOutTime !== undefined, "Check-out scan transitions status to CheckedOut and records actualOutTime");
   assert(exitResult.log.action === "OUT" && exitResult.log.gate === "Main North Campus Gate 1", "Checkpoint log correctly created for exit");
 
-  // 3.2 Return Scan (action: IN)
+  // 6.2 Return Scan (action: IN)
   const entryResult = await passService.recordCheckpointScan(
     approvedOvernight.id,
     "usr_guard_01",
@@ -146,14 +193,14 @@ async function runTestSuite() {
   );
   assert(entryResult.pass.status === "Completed" && entryResult.pass.actualInTime !== undefined, "Check-in scan transitions status to Completed and records actualInTime");
 
-  // 3.3 Audit Feed Log Retrieval
+  // 6.3 Audit Feed Log Retrieval
   const logs = await passService.getCheckpointLogs();
   assert(logs.length >= 2, "Checkpoint audit log feed records immutable event stream");
 
   // ==========================================================
-  // SUITE 4: Cryptographic TOTP Token Rotation Validation
+  // SUITE 7: Cryptographic TOTP Token Rotation Validation
   // ==========================================================
-  console.log("\n📂 [Suite 4: Dynamic TOTP QR Code Verification]");
+  console.log("\n📂 [Suite 7: Dynamic TOTP QR Code Verification]");
 
   const epochWindow1 = Math.floor(Date.now() / 15000);
   const token1 = `${dayPass.id}-${dayPass.rollNumber}-${epochWindow1.toString(36).toUpperCase()}`;

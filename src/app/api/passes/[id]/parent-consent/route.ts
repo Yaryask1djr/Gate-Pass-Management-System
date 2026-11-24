@@ -1,14 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
+import { authService } from "@/lib/auth-service";
 import { passService } from "@/lib/pass-service";
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Enforce warden authentication for manual administrative consent override
+  const sessionToken = request.cookies.get("passguard_session")?.value;
+  if (!sessionToken) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const user = await authService.getUserFromSession(sessionToken);
+  if (!user || user.role !== "admin") {
+    return NextResponse.json(
+      { error: "Forbidden: Only authorized hostel wardens can record manual parent consent overrides" },
+      { status: 403 }
+    );
+  }
+
   try {
     const { id } = await params;
     const body = await request.json();
     const { consent } = body as { consent: "Approved" | "Declined" };
+
+    if (!consent || (consent !== "Approved" && consent !== "Declined")) {
+      return NextResponse.json(
+        { error: "Consent must be strictly 'Approved' or 'Declined'" },
+        { status: 400 }
+      );
+    }
 
     const pass = await passService.getPassById(id);
     if (!pass) {
@@ -18,14 +40,14 @@ export async function POST(
     pass.parentConsent = {
       status: consent,
       verifiedAt: new Date().toISOString(),
-      method: "WhatsApp",
+      method: "Manual",
     };
 
     if (consent === "Approved" && pass.status === "Pending") {
       pass.status = "ParentApproved";
     } else if (consent === "Declined") {
       pass.status = "Rejected";
-      pass.wardenRemarks = "Declined by Parent/Guardian via WhatsApp";
+      pass.wardenRemarks = `Manually marked as ${consent} by Warden ${user.name}`;
     }
 
     return NextResponse.json({ success: true, pass });

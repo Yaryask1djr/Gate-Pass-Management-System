@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authService } from "@/lib/auth-service";
 import { UserRole } from "@/types";
+import { checkRateLimit } from "@/lib/security";
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,6 +16,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "Email, password, and role are required." },
         { status: 400 }
+      );
+    }
+
+    // Rate Limiting: 10 attempts per minute per IP to prevent brute-force attacks
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "127.0.0.1";
+    const rateLimitKey = `login_${ip}_${email.toLowerCase()}`;
+    const rateCheck = checkRateLimit(rateLimitKey, 10, 60 * 1000);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        {
+          error: `Too many login attempts. Please wait ${Math.ceil(
+            rateCheck.resetMs / 1000
+          )} seconds before trying again.`,
+        },
+        { status: 429 }
       );
     }
 
