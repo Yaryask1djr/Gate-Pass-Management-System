@@ -1,0 +1,121 @@
+// Prisma schema for PassGuard Architecture 2.0 (PostgreSQL / Neon / Supabase)
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String          @id @default(cuid())
+  name         String
+  email        String          @unique
+  passwordHash String
+  role         String          // "student" | "admin" | "guard"
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  studentProfile StudentProfile?
+  adminProfile   AdminProfile?
+  guardProfile   GuardProfile?
+  gatePasses     GatePass[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model StudentProfile {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rollNumber          String   @unique
+  hostel              String   // e.g. "NCH-A", "NC-1", etc.
+  roomNumber          String
+  phone               String
+  fatherName          String
+  fatherPhone         String
+  motherName          String
+  motherPhone         String
+  gender              String   @default("Male")
+  leaveQuotaRemaining Int      @default(4)
+
+  @@index([rollNumber])
+  @@index([hostel])
+}
+
+model AdminProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employeeId      String   @unique
+  department      String   @default("Campus Life & Student Affairs")
+  designation     String   @default("Hostel Warden")
+  assignedHostels String   // Comma-separated or JSON list
+  phone           String
+
+  @@index([employeeId])
+}
+
+model GuardProfile {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employeeId   String   @unique
+  assignedGate String   // e.g. "Main North Campus Gate 1"
+  phone        String
+  shift        String   @default("Morning") // "Morning" | "Evening" | "Night"
+
+  @@index([employeeId])
+}
+
+model GatePass {
+  id                      String          @id // e.g. "GP-9421"
+  studentId               String
+  student                 User            @relation(fields: [studentId], references: [id])
+  studentName             String
+  rollNumber              String
+  hostel                  String
+  roomNumber              String
+  passType                String          // "Day" | "Overnight" | "Emergency"
+  destination             String
+  reason                  String
+  departureTime           DateTime
+  expectedReturnTime      DateTime
+  actualOutTime           DateTime?
+  actualInTime            DateTime?
+  status                  String          @default("Pending") // "Pending" | "ParentApproved" | "Approved" | "Rejected" | "CheckedOut" | "Completed" | "Overdue"
+  parentConsentStatus     String          @default("Pending") // "Pending" | "Approved" | "Declined"
+  parentConsentVerifiedAt DateTime?
+  parentConsentMethod     String?         // "WhatsApp" | "SMS" | "Manual"
+  wardenRemarks           String?
+  approvedBy              String?
+  totpSecret              String
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
+
+  checkpointLogs          CheckpointLog[]
+
+  @@index([studentId])
+  @@index([rollNumber])
+  @@index([hostel])
+  @@index([status])
+}
+
+model CheckpointLog {
+  id                 String   @id @default(cuid())
+  passId             String
+  pass               GatePass @relation(fields: [passId], references: [id], onDelete: Cascade)
+  studentName        String
+  rollNumber         String
+  gate               String
+  guardId            String
+  guardName          String
+  action             String   // "OUT" | "IN"
+  timestamp          DateTime @default(now())
+  verificationMethod String   @default("DYNAMIC_QR") // "DYNAMIC_QR" | "MANUAL_OVERRIDE"
+
+  @@index([passId])
+  @@index([rollNumber])
+  @@index([timestamp])
+}
