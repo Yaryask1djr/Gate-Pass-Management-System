@@ -29,6 +29,7 @@ export default function AdminSignupPage() {
     designation: "Hostel Warden",
     phone: "",
     assignedHostels: ["NCH-A", "NCH-B"] as HostelName[],
+    staffSecret: "",
   });
 
   const [loading, setLoading] = useState(false);
@@ -59,6 +60,7 @@ export default function AdminSignupPage() {
         email: formData.email,
         password: formData.password,
         role: "admin",
+        staffSecret: formData.staffSecret,
         adminProfile: {
           employeeId: formData.employeeId,
           department: formData.department,
@@ -160,6 +162,32 @@ export default function AdminSignupPage() {
                     className="w-full bg-[#0d1320] border border-white/[0.08] rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
+              </div>
+
+              <div className="mt-4">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-medium text-amber-300">
+                    Institutional Staff Authorization Key
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, staffSecret: "CAMPUS-STAFF-2025" })}
+                    className="text-[10px] text-indigo-400 hover:text-indigo-300 underline"
+                  >
+                    Use Demo Key (CAMPUS-STAFF-2025)
+                  </button>
+                </div>
+                <input
+                  type="password"
+                  required
+                  placeholder="Enter institutional onboarding security code..."
+                  value={formData.staffSecret}
+                  onChange={(e) => setFormData({ ...formData, staffSecret: e.target.value })}
+                  className="w-full bg-[#0d1320] border border-amber-500/30 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 font-mono"
+                />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Prevents unauthorized self-registration of administrative accounts.
+                </p>
               </div>
             </div>
 

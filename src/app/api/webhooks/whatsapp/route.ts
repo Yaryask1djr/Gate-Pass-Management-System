@@ -43,23 +43,17 @@ export async function GET(request: NextRequest) {
     }
 
     const consentStatus = action === "approve" ? "Approved" : "Declined";
-    pass.parentConsent = {
-      status: consentStatus,
-      verifiedAt: new Date().toISOString(),
-      method: "WhatsApp",
-    };
-
-    if (action === "approve" && pass.status === "Pending") {
-      pass.status = "ParentApproved";
-    } else if (action === "reject") {
-      pass.status = "Rejected";
-      pass.wardenRemarks = "Declined by Parent via WhatsApp Link";
-    }
+    const updatedPass = await passService.updateParentConsent(
+      passId,
+      consentStatus,
+      "WhatsApp",
+      action === "reject" ? "Declined by Parent via WhatsApp Link" : undefined
+    );
 
     return NextResponse.json({
       success: true,
       message: `Parent consent recorded: ${consentStatus}`,
-      pass,
+      pass: updatedPass,
     });
   }
 
@@ -117,30 +111,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Pass ${passId} not found` }, { status: 404 });
     }
 
-    if (isApproved) {
-      pass.parentConsent = {
-        status: "Approved",
-        verifiedAt: new Date().toISOString(),
-        method: "WhatsApp",
-      };
-      if (pass.status === "Pending") {
-        pass.status = "ParentApproved";
-      }
-    } else if (isDeclined) {
-      pass.parentConsent = {
-        status: "Declined",
-        verifiedAt: new Date().toISOString(),
-        method: "WhatsApp",
-      };
-      pass.status = "Rejected";
-      pass.wardenRemarks = "Declined by Parent/Guardian via WhatsApp webhook";
-    }
+    const consentStatus = isApproved ? "Approved" : "Declined";
+    const updatedPass = await passService.updateParentConsent(
+      passId,
+      consentStatus,
+      "WhatsApp",
+      isDeclined ? "Declined by Parent/Guardian via WhatsApp webhook" : undefined
+    );
 
     return NextResponse.json({
       success: true,
       passId,
-      consentRecorded: isApproved ? "Approved" : "Declined",
-      updatedStatus: pass.status,
+      consentRecorded: consentStatus,
+      updatedStatus: updatedPass.status,
     });
   } catch (err: any) {
     console.error("WhatsApp webhook processing error:", err);

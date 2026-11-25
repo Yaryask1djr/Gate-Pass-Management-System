@@ -150,6 +150,36 @@ export const passService = {
     return pass;
   },
 
+  async updateParentConsent(
+    passId: string,
+    consentStatus: "Approved" | "Declined",
+    method: "WhatsApp" | "SMS" | "Manual",
+    remarks?: string
+  ): Promise<GatePass> {
+    if (isCloudDbConfigured()) {
+      return await dbService.updateParentConsent(passId, consentStatus, method, remarks);
+    }
+
+    const pass = await this.getPassById(passId);
+    if (!pass) throw new Error("Pass not found");
+
+    const isApproved = consentStatus === "Approved";
+    pass.parentConsent = {
+      status: consentStatus,
+      verifiedAt: new Date().toISOString(),
+      method,
+    };
+
+    if (isApproved && pass.status === "Pending") {
+      pass.status = "ParentApproved";
+    } else if (!isApproved) {
+      pass.status = "Rejected";
+      pass.wardenRemarks = remarks || `Declined by parent via ${method}`;
+    }
+
+    return pass;
+  },
+
   async recordCheckpointScan(
     passId: string,
     guardId: string,

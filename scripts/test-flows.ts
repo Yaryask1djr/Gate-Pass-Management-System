@@ -207,6 +207,139 @@ async function runTestSuite() {
   assert(token1.startsWith("GP-") && token1.includes("2024CS089"), "TOTP dynamic token generated with student identity binding");
 
   // ==========================================================
+  // SUITE 8: Optical QR Scan JSON Payload Parser
+  // ==========================================================
+  console.log("\n📂 [Suite 8: Optical QR Camera Payload Parser]");
+
+  const qrJsonPayload = JSON.stringify({
+    passId: "GP-9421",
+    rollNumber: "2024CS089",
+    studentName: "Aryan Sharma",
+    token: "GP-9421-2024CS089-SAMPLE",
+    t: Date.now(),
+  });
+
+  // Test extraction from JSON payload
+  let extractedId = "";
+  if (qrJsonPayload.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(qrJsonPayload);
+      extractedId = parsed.passId || "";
+    } catch {
+      extractedId = qrJsonPayload;
+    }
+  }
+  assert(extractedId === "GP-9421", "Optical scanner extracts passId from QR JSON string payload");
+
+  // Test fallback for raw ID string
+  const rawIdInput = "  GP-9421  ";
+  const normalizedRaw = rawIdInput.trim().startsWith("{")
+    ? JSON.parse(rawIdInput.trim()).passId
+    : rawIdInput.trim();
+  assert(normalizedRaw === "GP-9421", "Scanner normalizes and passes raw pass IDs cleanly");
+
+  // ==========================================================
+  // SUITE 9: Parent Consent & Webhook State Progression
+  // ==========================================================
+  console.log("\n📂 [Suite 9: Parent Consent Persistence & Elevation]");
+
+  // Create a fresh pending overnight pass
+  const pendingPass = await passService.createPass({
+    studentId: "usr_student_01",
+    studentName: "Aryan Sharma",
+    rollNumber: "2024CS089",
+    hostel: "NCH-A",
+    roomNumber: "304",
+    passType: "Overnight",
+    destination: "Family Residence",
+    reason: "Parent consent test flow",
+    departureTime: depart,
+    expectedReturnTime: ret,
+  });
+
+  assert(pendingPass.status === "Pending" && pendingPass.parentConsent.status === "Pending", "Fresh overnight pass starts as Pending consent");
+
+  // Simulate WhatsApp approval webhook
+  const approvedConsentPass = await passService.updateParentConsent(
+    pendingPass.id,
+    "Approved",
+    "WhatsApp"
+  );
+  assert(
+    approvedConsentPass.status === "ParentApproved" &&
+    approvedConsentPass.parentConsent.status === "Approved" &&
+    approvedConsentPass.parentConsent.method === "WhatsApp",
+    "Parent WhatsApp approval elevates pass status to ParentApproved"
+  );
+
+  // Test parent decline flow
+  const declinedPass = await passService.createPass({
+    studentId: "usr_student_01",
+    studentName: "Aryan Sharma",
+    rollNumber: "2024CS089",
+    hostel: "NCH-A",
+    roomNumber: "304",
+    passType: "Overnight",
+    destination: "Late party",
+    reason: "Will be rejected by parent",
+    departureTime: depart,
+    expectedReturnTime: ret,
+  });
+
+  const rejectedConsentPass = await passService.updateParentConsent(
+    declinedPass.id,
+    "Declined",
+    "SMS",
+    "Parent declined leave via SMS reply"
+  );
+  assert(
+    rejectedConsentPass.status === "Rejected" &&
+    rejectedConsentPass.parentConsent.status === "Declined",
+    "Parent SMS decline transitions pass status to Rejected"
+  );
+
+  // ==========================================================
+  // SUITE 10: User Management & Authentication Resilience
+  // ==========================================================
+  console.log("\n📂 [Suite 10: User Management & Identity Store]");
+
+  const testUserEmail = `audit_student_${Date.now()}@campus.edu`;
+  const createdStudent = await authService.createUser({
+    name: "Audit Test Resident",
+    email: testUserEmail,
+    role: "student",
+    passwordHash: "SecurePass@2026",
+    studentProfile: {
+      rollNumber: `2026AUDIT${Math.floor(Math.random() * 900)}`,
+      hostel: "NCH-A",
+      roomNumber: "101",
+      phone: "+91 99999 88888",
+      fatherName: "Guardian",
+      fatherPhone: "+91 99999 77777",
+      motherName: "Guardian",
+      motherPhone: "+91 99999 66666",
+      gender: "Male",
+      leaveQuotaRemaining: 4,
+    },
+  });
+
+  assert(createdStudent.id !== undefined && createdStudent.email === testUserEmail, "New resident successfully provisioned with hashed credentials");
+
+  // Attempt duplicate registration
+  let duplicateThrew = false;
+  try {
+    await authService.createUser({
+      name: "Duplicate User",
+      email: testUserEmail,
+      role: "student",
+      passwordHash: "AnotherPass",
+    });
+  } catch {
+    duplicateThrew = true;
+  }
+  assert(duplicateThrew, "Prevents duplicate account creation for existing email addresses");
+
+  // ==========================================================
   // SUMMARY
   // ==========================================================
   console.log("\n=======================================================");

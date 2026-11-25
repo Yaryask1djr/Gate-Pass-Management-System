@@ -15,6 +15,7 @@ export default function GuardSignupPage() {
     assignedGate: "Main North Campus Gate 1",
     shift: "Evening" as "Morning" | "Evening" | "Night",
     phone: "",
+    staffSecret: "",
   });
 
   const [loading, setLoading] = useState(false);
@@ -31,6 +32,7 @@ export default function GuardSignupPage() {
         email: formData.email,
         password: formData.password,
         role: "guard",
+        staffSecret: formData.staffSecret,
         guardProfile: {
           employeeId: formData.employeeId,
           assignedGate: formData.assignedGate,
@@ -127,6 +129,32 @@ export default function GuardSignupPage() {
                   className="w-full bg-[#0d1320] border border-white/[0.08] rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500"
                 />
               </div>
+            </div>
+
+            <div className="pt-3 border-t border-white/[0.06]">
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-medium text-amber-300">
+                  Checkpoint Staff Authorization Key
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, staffSecret: "CAMPUS-STAFF-2025" })}
+                  className="text-[10px] text-emerald-400 hover:text-emerald-300 underline"
+                >
+                  Use Demo Key (CAMPUS-STAFF-2025)
+                </button>
+              </div>
+              <input
+                type="password"
+                required
+                placeholder="Enter security staff authorization code..."
+                value={formData.staffSecret}
+                onChange={(e) => setFormData({ ...formData, staffSecret: e.target.value })}
+                className="w-full bg-[#0d1320] border border-amber-500/30 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500 font-mono"
+              />
+              <p className="text-[10px] text-slate-500 mt-1">
+                Security safeguard preventing unauthorized registration of checkpoint guard privileges.
+              </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-white/[0.06]">

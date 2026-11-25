@@ -24,15 +24,20 @@ export async function POST(request: NextRequest) {
       action?: "OUT" | "IN";
     };
 
-    // Parse passId from qrPayload if QR JSON string was scanned
-    if (!passId && qrPayload) {
+    // Parse passId from qrPayload or passId if QR JSON string was scanned
+    const rawInput = (passId || qrPayload || "").trim();
+    if (rawInput.startsWith("{")) {
       try {
-        const parsed = JSON.parse(qrPayload);
-        passId = parsed.passId;
+        const parsed = JSON.parse(rawInput);
+        if (parsed.passId) {
+          passId = parsed.passId;
+        }
       } catch {
         // Raw string might be the passId itself
-        passId = qrPayload.trim();
+        passId = rawInput;
       }
+    } else if (!passId && qrPayload) {
+      passId = qrPayload.trim();
     }
 
     if (!passId) {

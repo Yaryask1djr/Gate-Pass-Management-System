@@ -129,6 +129,108 @@ export const dbService = {
     }
   },
 
+  async createUser(data: {
+    name: string;
+    email: string;
+    passwordHash: string;
+    role: string;
+    studentProfile?: any;
+    adminProfile?: any;
+    guardProfile?: any;
+  }): Promise<User> {
+    const record = await prisma.user.create({
+      data: {
+        name: data.name,
+        email: data.email.toLowerCase(),
+        passwordHash: data.passwordHash,
+        role: data.role,
+        studentProfile: data.studentProfile
+          ? {
+              create: {
+                rollNumber: data.studentProfile.rollNumber,
+                hostel: data.studentProfile.hostel,
+                roomNumber: data.studentProfile.roomNumber,
+                phone: data.studentProfile.phone || "",
+                fatherName: data.studentProfile.fatherName || "",
+                fatherPhone: data.studentProfile.fatherPhone || "",
+                motherName: data.studentProfile.motherName || "",
+                motherPhone: data.studentProfile.motherPhone || "",
+                gender: data.studentProfile.gender || "Male",
+                leaveQuotaRemaining: data.studentProfile.leaveQuotaRemaining ?? 4,
+              },
+            }
+          : undefined,
+        adminProfile: data.adminProfile
+          ? {
+              create: {
+                employeeId: data.adminProfile.employeeId,
+                department: data.adminProfile.department || "Campus Life & Student Affairs",
+                designation: data.adminProfile.designation || "Hostel Warden",
+                assignedHostels: Array.isArray(data.adminProfile.assignedHostels)
+                  ? data.adminProfile.assignedHostels.join(",")
+                  : data.adminProfile.assignedHostels || "NCH-A",
+                phone: data.adminProfile.phone || "",
+              },
+            }
+          : undefined,
+        guardProfile: data.guardProfile
+          ? {
+              create: {
+                employeeId: data.guardProfile.employeeId,
+                assignedGate: data.guardProfile.assignedGate || "Main Campus Gate 1",
+                phone: data.guardProfile.phone || "",
+                shift: data.guardProfile.shift || "Morning",
+              },
+            }
+          : undefined,
+      },
+      include: {
+        studentProfile: true,
+        adminProfile: true,
+        guardProfile: true,
+      },
+    });
+
+    return {
+      id: record.id,
+      name: record.name,
+      email: record.email,
+      role: record.role as any,
+      createdAt: record.createdAt.toISOString(),
+      studentProfile: record.studentProfile
+        ? {
+            rollNumber: record.studentProfile.rollNumber,
+            hostel: record.studentProfile.hostel as HostelName,
+            roomNumber: record.studentProfile.roomNumber,
+            phone: record.studentProfile.phone,
+            fatherName: record.studentProfile.fatherName,
+            fatherPhone: record.studentProfile.fatherPhone,
+            motherName: record.studentProfile.motherName,
+            motherPhone: record.studentProfile.motherPhone,
+            gender: record.studentProfile.gender as any,
+            leaveQuotaRemaining: record.studentProfile.leaveQuotaRemaining,
+          }
+        : undefined,
+      adminProfile: record.adminProfile
+        ? {
+            employeeId: record.adminProfile.employeeId,
+            department: record.adminProfile.department,
+            designation: record.adminProfile.designation,
+            assignedHostels: record.adminProfile.assignedHostels.split(",") as HostelName[],
+            phone: record.adminProfile.phone,
+          }
+        : undefined,
+      guardProfile: record.guardProfile
+        ? {
+            employeeId: record.guardProfile.employeeId,
+            assignedGate: record.guardProfile.assignedGate,
+            phone: record.guardProfile.phone,
+            shift: record.guardProfile.shift as any,
+          }
+        : undefined,
+    };
+  },
+
   // ==========================================
   // GATE PASS QUERIES
   // ==========================================
@@ -223,6 +325,39 @@ export const dbService = {
       },
     });
     return this.mapDbPassToGatePass(record);
+  },
+
+  async updateParentConsent(
+    passId: string,
+    consentStatus: "Approved" | "Declined",
+    method: "WhatsApp" | "SMS" | "Manual",
+    remarks?: string
+  ): Promise<GatePass> {
+    const verifiedAt = new Date();
+    const isApproved = consentStatus === "Approved";
+
+    const existingPass = await prisma.gatePass.findUnique({ where: { id: passId } });
+    if (!existingPass) throw new Error(`Pass ${passId} not found`);
+
+    let newStatus = existingPass.status;
+    if (isApproved && existingPass.status === "Pending") {
+      newStatus = "ParentApproved";
+    } else if (!isApproved) {
+      newStatus = "Rejected";
+    }
+
+    const updated = await prisma.gatePass.update({
+      where: { id: passId },
+      data: {
+        parentConsentStatus: consentStatus,
+        parentConsentVerifiedAt: verifiedAt,
+        parentConsentMethod: method,
+        status: newStatus,
+        wardenRemarks: remarks || (isApproved ? undefined : `Declined by parent via ${method}`),
+      },
+    });
+
+    return this.mapDbPassToGatePass(updated);
   },
 
   async recordCheckpointScan(

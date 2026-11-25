@@ -37,20 +37,14 @@ export async function POST(
       return NextResponse.json({ error: "Pass not found" }, { status: 404 });
     }
 
-    pass.parentConsent = {
-      status: consent,
-      verifiedAt: new Date().toISOString(),
-      method: "Manual",
-    };
+    const updatedPass = await passService.updateParentConsent(
+      id,
+      consent,
+      "Manual",
+      `Manually marked as ${consent} by Warden ${user.name}`
+    );
 
-    if (consent === "Approved" && pass.status === "Pending") {
-      pass.status = "ParentApproved";
-    } else if (consent === "Declined") {
-      pass.status = "Rejected";
-      pass.wardenRemarks = `Manually marked as ${consent} by Warden ${user.name}`;
-    }
-
-    return NextResponse.json({ success: true, pass });
+    return NextResponse.json({ success: true, pass: updatedPass });
   } catch (err: any) {
     return NextResponse.json(
       { error: err.message || "Failed to record parent consent" },

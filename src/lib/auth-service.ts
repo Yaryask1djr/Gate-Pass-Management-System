@@ -89,15 +89,29 @@ export const authService = {
     return memUser || null;
   },
 
-  createUser(userData: Omit<UserRecord, "id" | "createdAt">) {
-    const existing = globalForAuth.usersStore.find((u) => u.email.toLowerCase() === userData.email.toLowerCase());
+  async createUser(userData: Omit<UserRecord, "id" | "createdAt">): Promise<User> {
+    const existing = await this.findUserByEmail(userData.email);
     if (existing) {
       throw new Error("A user with this email address already exists.");
     }
 
+    const hashedPassword = hashPassword(userData.passwordHash);
+
+    if (isCloudDbConfigured()) {
+      return await dbService.createUser({
+        name: userData.name,
+        email: userData.email,
+        passwordHash: hashedPassword,
+        role: userData.role,
+        studentProfile: userData.studentProfile,
+        adminProfile: userData.adminProfile,
+        guardProfile: userData.guardProfile,
+      });
+    }
+
     const newUser: UserRecord = {
       ...userData,
-      passwordHash: hashPassword(userData.passwordHash),
+      passwordHash: hashedPassword,
       id: `usr_${userData.role}_${Date.now()}`,
       createdAt: new Date().toISOString(),
     };

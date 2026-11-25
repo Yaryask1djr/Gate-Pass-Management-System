@@ -98,11 +98,26 @@ export default function GuardDashboardPage() {
   const processScan = async (codeToVerify: string) => {
     if (!codeToVerify.trim()) return;
 
+    let targetPassId = codeToVerify.trim();
+    let qrPayload: string | undefined = undefined;
+
+    if (targetPassId.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(targetPassId);
+        if (parsed.passId) {
+          qrPayload = targetPassId;
+          targetPassId = parsed.passId;
+        }
+      } catch {
+        // Fallback to raw string
+      }
+    }
+
     try {
       const res = await fetch("/api/passes/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ passId: codeToVerify.trim() }),
+        body: JSON.stringify({ passId: targetPassId, qrPayload }),
       });
 
       const data = await res.json();

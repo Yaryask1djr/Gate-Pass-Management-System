@@ -27,20 +27,19 @@ export async function POST(request: NextRequest) {
         const pass = await passService.getPassById(passId);
         if (pass) {
           const isApproved = action === "YES" || action === "APPROVE";
-          
-          pass.parentConsent = {
-            status: isApproved ? "Approved" : "Declined",
-            verifiedAt: new Date().toISOString(),
-            method: "SMS",
-          };
+          const consentStatus = isApproved ? "Approved" : "Declined";
 
-          if (isApproved && pass.status === "Pending") {
-            pass.status = "ParentApproved";
-            replyMessage = `PassGuard: Thank you. Your approval for ${pass.studentName}'s pass (${pass.id}) has been recorded.`;
-          } else if (!isApproved) {
-            pass.status = "Rejected";
-            pass.wardenRemarks = "Declined by Parent via SMS response";
-            replyMessage = `PassGuard: Notice received. Pass (${pass.id}) has been declined.`;
+          const updatedPass = await passService.updateParentConsent(
+            passId,
+            consentStatus,
+            "SMS",
+            !isApproved ? "Declined by Parent via SMS response" : undefined
+          );
+
+          if (isApproved) {
+            replyMessage = `PassGuard: Thank you. Your approval for ${updatedPass.studentName}'s pass (${updatedPass.id}) has been recorded.`;
+          } else {
+            replyMessage = `PassGuard: Notice received. Pass (${updatedPass.id}) has been declined.`;
           }
         } else {
           replyMessage = `PassGuard: Pass ID ${passId} was not found in the campus registry.`;

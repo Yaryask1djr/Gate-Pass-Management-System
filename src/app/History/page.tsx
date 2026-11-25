@@ -21,11 +21,22 @@ export default function HistoryPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<string>("All");
   const [loading, setLoading] = useState(true);
+  const [isUnauthorized, setIsUnauthorized] = useState(false);
 
   useEffect(() => {
     fetch("/api/passes")
-      .then((res) => res.json())
-      .then((data) => setPasses(data.passes || []))
+      .then((res) => {
+        if (res.status === 401) {
+          setIsUnauthorized(true);
+          return null;
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (data?.passes) {
+          setPasses(data.passes);
+        }
+      })
       .catch((err) => console.error(err))
       .finally(() => setLoading(false));
   }, []);
